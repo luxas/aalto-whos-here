@@ -8,7 +8,8 @@
    https://seeeddoc.github.io/NFC_Shield_V1.0/
    https://github.com/elechouse/PN532/tree/PN532_HSU
    http://www.elechouse.com/elechouse/index.php?main_page=product_info&cPath=90_93&products_id=2242
-
+   https://randomnerdtutorials.com/esp32-ntp-client-date-time-arduino-ide/
+   https://arduinojson.org/v6/api/jsonvariant/
 */
 
 // Install this by adding https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json to File -> Preferences -> Additional Board Manager URLs
@@ -36,11 +37,14 @@
 #include <string>
 #include <sstream>
 #include <ArduinoJson.h>
+#include <map>
 
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
 const std::string UUID ="foobar";
+// only allow one card registration per hour (currently hardcoded to a minute for testing)
+const unsigned long registrationPeriod = 1 * 60; //  * 60;
 
 // Setup variables for communicating with the NFC device
 int nfcSPIPort = SS;
@@ -55,6 +59,8 @@ NTPClient timeClient(ntpUDP);
 
 std::vector<User> users;
 Device currentDevice;
+
+std::map<std::string, unsigned long> registrations;
 
 void setup() {
   // Open a serial connection to a computer, if connected
@@ -159,6 +165,18 @@ void loop() {
     cardID += buf;
   }
   Serial.println(cardID.c_str());
+  auto it = registrations.find(cardID);
+  if (it != registrations.end()) {
+    auto t = registrations[cardID];
+    auto delta = timeClient.getEpochTime() - t;
+    if (delta < registrationPeriod) {
+      Serial.print("Waiting some time, because an earlier presentation already found. Delta: ");
+      Serial.println(delta);
+      return;
+    }
+  }
+  auto epochTime = timeClient.getEpochTime();
+  registrations[cardID] = epochTime;
   for (auto user : users) {
     for (auto id : user.identifiers) {
       if (cardID == id) {
@@ -166,7 +184,7 @@ void loop() {
         ss << "Hello " << user.firstName << " " << user.lastName << ", you're registered!";
         Serial.println(ss.str().c_str());
         FirebaseJson json;
-        json.addInt("timestamp", timeClient.getEpochTime());
+        json.addInt("timestamp", epochTime);
         json.addInt("userID", user.userID);
         json.addString("device", UUID.c_str());
         if (Firebase.pushJSON(firebaseData, "/registrations", json)) {
