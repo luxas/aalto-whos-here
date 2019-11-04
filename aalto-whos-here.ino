@@ -30,8 +30,8 @@
 #include <PN532.h>
 // Include secret constants
 #include "secrets.h"
-// Include our types
-#include "types.hpp"
+// Include our data types
+#include "types.cpp"
 
 #include <iomanip>
 #include <string>
@@ -155,15 +155,7 @@ void loop() {
   // Display some basic information about the card
   Serial.println("Found an ISO14443A card");
   Serial.print("  Card ID: ");
-  std::string cardID = "";
-  for (uint8_t i = 0; i < uidLength; i++) {
-    if (i > 0) {
-      cardID += ":";
-    }
-    char buf[2];
-    sprintf(buf, "%02hhx", uid[i]);
-    cardID += buf;
-  }
+  auto cardID = getCardID(uid, uidLength);
   Serial.println(cardID.c_str());
   auto it = registrations.find(cardID);
   if (it != registrations.end()) {
@@ -174,6 +166,7 @@ void loop() {
       Serial.println(delta);
       return;
     }
+    Serial.print("Delta was: "); Serial.println(delta);
   }
   auto epochTime = timeClient.getEpochTime();
   registrations[cardID] = epochTime;
@@ -183,11 +176,9 @@ void loop() {
         std::stringstream ss;
         ss << "Hello " << user.firstName << " " << user.lastName << ", you're registered!";
         Serial.println(ss.str().c_str());
-        FirebaseJson json;
-        json.addInt("timestamp", epochTime);
-        json.addInt("userID", user.userID);
-        json.addString("device", UUID.c_str());
-        if (Firebase.pushJSON(firebaseData, "/registrations", json)) {
+        Registration r(user.userID, epochTime, UUID);
+        auto json = r.ToJSON();
+        if (Firebase.pushJSON(firebaseData, "/registrations", *json)) {
           Serial.println(firebaseData.dataPath());
           Serial.println(firebaseData.pushName());
         } else {
@@ -198,6 +189,19 @@ void loop() {
   }
   Serial.println("");
   Serial.flush();
+}
+
+std::string getCardID(uint8_t uid[], uint8_t uidLength) {
+  std::stringstream ss;
+  for (uint8_t i = 0; i < uidLength; i++) {
+    if (i > 0) {
+      ss << ":";
+    }
+    char buf[2];
+    sprintf(buf, "%02hhx", uid[i]);
+    ss << buf;
+  }
+  return ss.str();
 }
 
 void streamFirebaseData(FirebaseData& db, String path, StreamEventCallback callback) {
@@ -225,27 +229,11 @@ void usersCallback(StreamData data) {
   }
   JsonObject allUsers = doc.as<JsonObject>();
   for (JsonPair kv : allUsers) {
-    User u;
-    u.userID = atoi(kv.key().c_str()); // the key (user ID)
-    Serial.println(u.userID);
     JsonObject userObj = kv.value().as<JsonObject>();
-    
-    const char* str = userObj["firstName"];
-    Serial.println(str);
-    u.firstName = std::string(str);
-    str = userObj["lastName"];
-    Serial.println(str);
-    u.lastName = std::string(str);
-    JsonArray idArr = userObj["identifiers"].as<JsonArray>();
-    for (JsonVariant value : idArr) {
-      if (value.isNull()) {
-        continue;
-      }
-      str = value.as<char*>();
-      Serial.println(str);
-      u.identifiers.push_back(std::string(str));
-    }
+    User u(atoi(kv.key().c_str()), userObj);
     users.push_back(u);
+
+    Serial.println(u.userID);
   }
   Serial.print("Users length: "); Serial.println(users.size());
 }
