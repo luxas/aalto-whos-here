@@ -8,10 +8,12 @@
             "cppStandard": "c++17",
             "intelliSenseMode": "gcc-x64",
             "includePath": [
+                "~/Arduino/hardware/espressif/esp32/**",
                 "~/Arduino/libraries/**",
                 "~/.arduino15/packages/esp32/hardware/esp32/1.0.4/**",
                 "~/arduino/**"
-            ]
+            ],
+            "forcedInclude": []
         }
     ],
     "version": 4
