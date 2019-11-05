@@ -14,7 +14,9 @@
 
 // Install this by adding https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json to File -> Preferences -> Additional Board Manager URLs
 // Then go to the board manager and add ESP32 support. We used version 1.0.4
+// Include the Arduino libraries
 #include <Arduino.h>
+
 // Connect to Firebase through WiFi
 #include <WiFi.h>
 // Install this as Firebase ESP32 Client by Mobitz, version 3.2.1
@@ -28,20 +30,34 @@
 // This was also a bit annoying, as we had to do a sed "s|PN532/PN532/||g" across all files downloaded
 #include <PN532_SPI.h>
 #include <PN532.h>
+
+// Support reading/parsing JSON. Eventually get rid of this; use FirebaseJSON instead.
+#include <ArduinoJson.h>
+// Get the current time using some NTP servers
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
 // Include secret constants
+/*
+There is intentionally a whitespace between # and define, there shouldn't be one in secrets.h for real:
+
+# define FIREBASE_HOST "<domain>" //Change to your Firebase RTDB project ID e.g. Your_Project_ID.firebaseio.com
+# define FIREBASE_SECRET "<secret string>" //Change to your Firebase RTDB secret password
+# define WIFI_SSID "<ssid string>"
+# define WIFI_PASSWORD "<ssid password>" // Can also be blank
+*/
 #include "secrets.h"
 // Include our data types
-#include "types.cpp"
+#include "types.hpp"
 
 #include <iomanip>
 #include <string>
 #include <sstream>
-#include <ArduinoJson.h>
 #include <map>
 
-#include <NTPClient.h>
-#include <WiFiUdp.h>
 
+
+// TODO: Get this based on some value, e.g. CPU number
 const std::string UUID ="foobar";
 // only allow one card registration per hour (currently hardcoded to a minute for testing)
 const unsigned long registrationPeriod = 1 * 60; //  * 60;
@@ -75,6 +91,9 @@ void setup() {
   // With internet connectivity set up, we can now connect to the Firebase Realtime Database
   initFirebase(firebaseData, FIREBASE_HOST, FIREBASE_SECRET);
 
+  // TODO: Initialize the LCD
+  // TODO: Set the LED to red
+
   timeClient.begin();
 
   streamFirebaseData(firebaseData, "/users", usersCallback);
@@ -107,6 +126,7 @@ void setupNFC(PN532& nfcDevice) {
 void connectToWiFi(char ssid[], char password[]) {
   WiFi.begin(ssid, password);
   Serial.print("Connecting to Wi-Fi");
+  // TODO: If this takes too long, then try again
   while (WiFi.status() != WL_CONNECTED)
   {
     Serial.print(".");
@@ -176,6 +196,11 @@ void loop() {
         std::stringstream ss;
         ss << "Hello " << user.firstName << " " << user.lastName << ", you're registered!";
         Serial.println(ss.str().c_str());
+
+        // TODO: Show green light here shortly
+        // TODO: Display the welcome message on the LCD screen
+        // TODO: Play buzz sound
+
         Registration r(user.userID, epochTime, UUID);
         auto json = r.ToJSON();
         if (Firebase.pushJSON(firebaseData, "/registrations", *json)) {
@@ -208,6 +233,7 @@ void streamFirebaseData(FirebaseData& db, String path, StreamEventCallback callb
   Firebase.setStreamCallback(db, callback, streamTimeoutCallback);
 
   //In setup(), set the streaming path and begin stream connection
+  // TODO: Make this faster, by calling callback manually the first time, when getting the data synchronously
   if (!Firebase.beginStream(db, path))
   {
     //Could not begin stream connection, then print out the error detail
@@ -221,12 +247,16 @@ void usersCallback(StreamData data) {
   Serial.println(data.dataType());
   Serial.println(data.jsonData());
 
+  // TODO: Dynamically set this, based on the byte size of the response
+  // TODO: Figure out if the Firebase library has some kind of pagination setup
   DynamicJsonDocument doc(500);
   DeserializationError error = deserializeJson(doc, data.jsonData());
   if (error) {
     Serial.print("deserializeJson() failed: "); Serial.println(error.c_str());
     return;
   }
+  // TODO: Erase existing users before writing new ones!
+  // TODO: Use FirebaseJSON consistently here for parsing the data, instead of this extra library
   JsonObject allUsers = doc.as<JsonObject>();
   for (JsonPair kv : allUsers) {
     JsonObject userObj = kv.value().as<JsonObject>();
@@ -236,6 +266,7 @@ void usersCallback(StreamData data) {
     Serial.println(u.userID);
   }
   Serial.print("Users length: "); Serial.println(users.size());
+  // TODO: Turn LED to blue
 }
 
 void deviceCallback(StreamData data) {
