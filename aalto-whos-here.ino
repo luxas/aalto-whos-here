@@ -10,6 +10,7 @@
    http://www.elechouse.com/elechouse/index.php?main_page=product_info&cPath=90_93&products_id=2242
    https://randomnerdtutorials.com/esp32-ntp-client-date-time-arduino-ide/
    https://arduinojson.org/v6/api/jsonvariant/
+   https://randomnerdtutorials.com/esp32-pwm-arduino-ide/
 */
 
 // Install this by adding https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json to File -> Preferences -> Additional Board Manager URLs
@@ -55,8 +56,6 @@ There is intentionally a whitespace between # and define, there shouldn't be one
 #include <sstream>
 #include <map>
 
-
-
 // TODO: Get this based on some value, e.g. CPU number
 const std::string UUID ="foobar";
 // only allow one card registration per hour (currently hardcoded to a minute for testing)
@@ -75,8 +74,25 @@ NTPClient timeClient(ntpUDP);
 
 std::vector<User> users;
 Device currentDevice;
+bool usersInitialized = false;
 
 std::map<std::string, unsigned long> registrations;
+
+unsigned long nextLoopTime = 0;
+
+// PWM output constants
+const int ledFrequency = 5000;
+const int resolution = 8;
+// PWM pins for the RGB LED
+const int pwmPinRed = 4;
+const int pwmPinGreen = 2;
+const int pwmPinBlue = 0;
+
+// Buzzer constants
+const int pwmPinBuzzer = 27;
+const int buzzerChannel = 6;
+const int buzzerFrequency = 2000;
+const unsigned long buzzTime = 500;
 
 void setup() {
   // Open a serial connection to a computer, if connected
@@ -92,7 +108,21 @@ void setup() {
   initFirebase(firebaseData, FIREBASE_HOST, FIREBASE_SECRET);
 
   // TODO: Initialize the LCD
-  // TODO: Set the LED to red
+
+  // Setup the PWM functionality of the ESP
+  ledcSetup(pwmPinRed, ledFrequency, resolution);
+  ledcSetup(pwmPinGreen, ledFrequency, resolution);
+  ledcSetup(pwmPinBlue, ledFrequency, resolution);
+  // The channel number is the same as the pin
+  ledcAttachPin(pwmPinRed, pwmPinRed);
+  ledcAttachPin(pwmPinGreen, pwmPinGreen);
+  ledcAttachPin(pwmPinBlue, pwmPinBlue);
+  // Set the LED to be red
+  rgbLED(255, 0, 0);
+
+  // Setup the buzzer
+  ledcSetup(buzzerChannel, buzzerFrequency, resolution);
+  ledcAttachPin(pwmPinBuzzer, buzzerChannel);
 
   timeClient.begin();
 
@@ -100,6 +130,12 @@ void setup() {
   /*std::string deviceStr = "/devices/";
   deviceStr += UUID;
   streamFirebaseData(firebaseData, deviceStr.c_str(), deviceCallback);*/
+}
+
+void rgbLED(int red, int green, int blue) {
+  ledcWrite(pwmPinRed, red);
+  ledcWrite(pwmPinGreen, green);
+  ledcWrite(pwmPinBlue, blue);
 }
 
 void setupNFC(PN532& nfcDevice) {
@@ -154,8 +190,19 @@ void initFirebase(FirebaseData& db, String host, String secret) {
 }
 
 void loop() {
+  // Wait until we've passed the nextLoopTime time mark.
+  if (nextLoopTime < millis() && nextLoopTime != 0) {
+    return;
+  }
+
   while(!timeClient.update()) {
     timeClient.forceUpdate();
+  }
+  
+  // Wait until the async thread has initialized the users vector.
+  if (!usersInitialized) {
+    nextLoopTime = millis() + 2000;
+    return;
   }
   
   uint8_t success;                          // Flag to check if there was an error with the PN532
@@ -169,7 +216,7 @@ void loop() {
 
   if (!success) {
     Serial.print(timeClient.getFormattedTime()); Serial.println(": no card at the moment");
-    sleep(2);
+    nextLoopTime = millis() + 1000;
     return;
   }
   // Display some basic information about the card
@@ -197,9 +244,12 @@ void loop() {
         ss << "Hello " << user.firstName << " " << user.lastName << ", you're registered!";
         Serial.println(ss.str().c_str());
 
-        // TODO: Show green light here shortly
+        // Set the LED to green for a while
+        rgbLED(0, 255, 0);
+        // Play buzzer sound
+        ledcWrite(buzzerChannel, 255);
+        ledcWriteTone(buzzerChannel, 1500);
         // TODO: Display the welcome message on the LCD screen
-        // TODO: Play buzz sound
 
         Registration r(user.userID, epochTime, UUID);
         auto json = r.ToJSON();
@@ -209,11 +259,27 @@ void loop() {
         } else {
           Serial.println(firebaseData.errorReason());
         }
+        // Wait 0.5s and then go back to blue
+        /*unsigned long now = millis();
+        unsigned long waitTime = buzzTime - max<unsigned long>(now - before, buzzTime);
+        Serial.println(buzzTime);
+        Serial.println(now - before);
+        Serial.println(waitTime);
+        if (waitTime > 0) {
+          Serial.println("Sleeping a bit");
+          delay(waitTime);
+        }*/
+        delay(250);
+        ledcWrite(buzzerChannel, 0);
+        ledcWriteTone(buzzerChannel, 0);
+        rgbLED(0, 0, 255);
       }
     }
   }
-  Serial.println("");
+  Serial.println("Loop done.");
   Serial.flush();
+  // Need to reset the timer here so that it successfully starts the next round
+  nextLoopTime = 0;
 }
 
 std::string getCardID(uint8_t uid[], uint8_t uidLength) {
@@ -265,8 +331,9 @@ void usersCallback(StreamData data) {
 
     Serial.println(u.userID);
   }
+  usersInitialized = true;
+  rgbLED(0, 0, 255);
   Serial.print("Users length: "); Serial.println(users.size());
-  // TODO: Turn LED to blue
 }
 
 void deviceCallback(StreamData data) {
