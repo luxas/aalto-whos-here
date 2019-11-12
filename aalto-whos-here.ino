@@ -255,8 +255,8 @@ void usersCallback(StreamData data) {
     Serial.print("deserializeJson() failed: "); Serial.println(error.c_str());
     return;
   }
-  // TODO: Erase existing users before writing new ones!
   // TODO: Use FirebaseJSON consistently here for parsing the data, instead of this extra library
+  users.clear();
   JsonObject allUsers = doc.as<JsonObject>();
   for (JsonPair kv : allUsers) {
     JsonObject userObj = kv.value().as<JsonObject>();
