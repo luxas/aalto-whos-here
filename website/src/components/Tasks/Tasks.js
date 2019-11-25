@@ -21,18 +21,19 @@ const useStyles = makeStyles(styles);
 
 export default function Tasks(props) {
   const classes = useStyles();
-  const [checked, setChecked] = React.useState([...props.checkedIndexes]);
+  const { tasksIndexes, tasks, rtlActive, checkedIndexes } = props;
   const handleToggle = value => {
-    const currentIndex = checked.indexOf(value);
-    const newChecked = [...checked];
+    const currentIndex = checkedIndexes.indexOf(value);
     if (currentIndex === -1) {
-      newChecked.push(value);
+      checkedIndexes.push(value); // add to the checked list
     } else {
-      newChecked.splice(currentIndex, 1);
+      checkedIndexes.splice(currentIndex, 1); // remove from the checked list
     }
-    setChecked(newChecked);
+    if (props.onCheckedChanged) {
+      props.onCheckedChanged(value, currentIndex === -1)
+    }
   };
-  const { tasksIndexes, tasks, rtlActive } = props;
+  
   const tableCellClasses = classnames(classes.tableCell, {
     [classes.tableCellRTL]: rtlActive
   });
@@ -43,7 +44,7 @@ export default function Tasks(props) {
           <TableRow key={value} className={classes.tableRow}>
             <TableCell className={tableCellClasses}>
               <Checkbox
-                checked={checked.indexOf(value) !== -1}
+                checked={checkedIndexes.indexOf(value) !== -1}
                 tabIndex={-1}
                 onClick={() => handleToggle(value)}
                 checkedIcon={<Check className={classes.checkedIcon} />}
@@ -102,5 +103,6 @@ Tasks.propTypes = {
   tasksIndexes: PropTypes.arrayOf(PropTypes.number),
   tasks: PropTypes.arrayOf(PropTypes.node),
   rtlActive: PropTypes.bool,
-  checkedIndexes: PropTypes.array
+  checkedIndexes: PropTypes.array,
+  onCheckedChanged: PropTypes.func,
 };

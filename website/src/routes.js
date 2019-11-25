@@ -32,35 +32,31 @@ import Icons from "views/Icons/Icons.js";
 import Maps from "views/Maps/Maps.js";
 import NotificationsPage from "views/Notifications/Notifications.js";
 
-import Lesson from "views/Lesson/Lesson.js";
-
-const sidebarRoutes = [
+const initSidebarRoutes = [
   {
     path: "/dashboard",
     name: "Dashboard",
     icon: Dashboard,
     component: DashboardPage,
     layout: "/admin"
-  },
-  {
-    path: "/lesson",
-    name: "Lesson 05.11.2019",
-    icon: Person,
-    component: Lesson,
-    layout: "/admin",
   }
 ];
 
-const allRoutes = [].concat(sidebarRoutes);
-allRoutes.push({
-  path: "/user",
-  name: "User Profile",
-  icon: Person,
-  component: UserProfile,
-  layout: "/admin"
-})
+const initAllRoutes = makeAllRoutes(initSidebarRoutes)
+
+function makeAllRoutes(sideRoutes) {
+  return [{
+    path: "/user",
+    name: "User Profile",
+    icon: Person,
+    component: UserProfile,
+    layout: "/admin"
+  }].concat(sideRoutes);
+}
+
 
 export {
-  sidebarRoutes,
-  allRoutes,
+  initSidebarRoutes,
+  initAllRoutes,
+  makeAllRoutes,
 };

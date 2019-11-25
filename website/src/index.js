@@ -25,14 +25,18 @@ import Admin from "layouts/Admin.js";
 
 import "assets/css/material-dashboard-react.css?v=1.8.0";
 
+import Firebase, { FirebaseContext } from './components/Firebase';
+
 const hist = createBrowserHistory();
 
 ReactDOM.render(
-  <Router history={hist}>
-    <Switch>
-      <Route path="/admin" component={Admin} />
-      <Redirect from="/" to="/admin/dashboard" />
-    </Switch>
-  </Router>,
+  <FirebaseContext.Provider value={new Firebase()}>
+    <Router history={hist}>
+      <Switch>
+        <Route path="/admin" component={Admin} />
+        <Redirect from="/" to="/admin/dashboard" />
+      </Switch>
+    </Router>
+  </FirebaseContext.Provider>,
   document.getElementById("root")
 );

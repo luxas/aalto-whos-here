@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Switch, Route, Redirect } from "react-router-dom";
 // creates a beautiful scrollbar
 import PerfectScrollbar from "perfect-scrollbar";
@@ -9,16 +9,21 @@ import { makeStyles } from "@material-ui/core/styles";
 import Navbar from "components/Navbars/Navbar.js";
 import Sidebar from "components/Sidebar/Sidebar.js";
 
-import {allRoutes, sidebarRoutes} from "routes.js";
+import Person from "@material-ui/icons/Person";
+import {makeAllRoutes, initAllRoutes, initSidebarRoutes} from "routes.js";
 
 import styles from "assets/jss/material-dashboard-react/layouts/adminStyle.js";
 
 import bgImage from "assets/img/sidebar-2.jpg";
 import logo from "assets/img/reactlogo.png";
 
+import {withFirebase} from '../components/Firebase';
+import {formatYYYYDDMM, dateFromTimestamp} from '../util'
+import Lesson from "../views/Lesson/Lesson.js";
+
 let ps;
 
-const switchRoutes = (
+const switchRoutes = (allRoutes) => (
   <Switch>
     {allRoutes.map((prop, key) => {
       if (prop.layout === "/admin") {
@@ -38,7 +43,7 @@ const switchRoutes = (
 
 const useStyles = makeStyles(styles);
 
-export default function Admin({ ...rest }) {
+export default withFirebase(function Admin({ firebase, ...rest }) {
   // styles
   const classes = useStyles();
   // ref to help us initialize PerfectScrollbar on windows devices
@@ -76,6 +81,41 @@ export default function Admin({ ...rest }) {
       window.removeEventListener("resize", resizeFunction);
     };
   }, [mainPanel]);
+
+  const [allRoutes, setAllRoutes] = React.useState(initAllRoutes);
+  const [sidebarRoutes, setSidebarRoutes] = React.useState(initSidebarRoutes);
+  useEffect(() => {
+    firebase.fetchRegistrations((registrations) => {
+      const extraroutes = []
+      const registrationMap = {}
+      registrations.forEach((registration) => {
+        const datestr = formatYYYYDDMM(dateFromTimestamp(registration.timestamp))
+        if (!registrationMap.hasOwnProperty(datestr)) {
+          registrationMap[datestr] = true
+        }
+      })
+      console.log(registrationMap)
+
+      Object.keys(registrationMap).forEach((datestr) => {
+        extraroutes.push({
+          path: "/lesson/" + datestr,
+          name: "Lesson " + datestr,
+          icon: Person,
+          component: Lesson,
+          layout: "/admin",
+        })
+      })
+      console.log(extraroutes)
+
+      const sidebarRoutes = initSidebarRoutes.concat(extraroutes)
+      const allRoutes = makeAllRoutes(sidebarRoutes)
+      
+      setSidebarRoutes(sidebarRoutes)
+      setAllRoutes(allRoutes)
+    })
+  }, [firebase])
+
+
   return (
     <div className={classes.wrapper}>
       <Sidebar
@@ -97,12 +137,12 @@ export default function Admin({ ...rest }) {
         {/* On the /maps route we want the map to be on full screen - this is not possible if the content and conatiner classes are present because they have some paddings which would make the map smaller */}
         {getRoute() ? (
           <div className={classes.content}>
-            <div className={classes.container}>{switchRoutes}</div>
+            <div className={classes.container}>{switchRoutes(allRoutes)}</div>
           </div>
         ) : (
-          <div className={classes.map}>{switchRoutes}</div>
+          <div className={classes.map}>{switchRoutes(allRoutes)}</div>
         )}
       </div>
     </div>
   );
-}
+})
