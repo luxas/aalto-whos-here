@@ -190,6 +190,8 @@ void initFirebase(FirebaseData& db, String host, String secret) {
 }
 
 void loop() {
+  stopFeedback();
+  
   // Wait until we've passed the nextLoopTime time mark.
   if (nextLoopTime < millis() && nextLoopTime != 0) {
     return;
@@ -259,7 +261,6 @@ void loop() {
           Serial.println("Sleeping a bit");
           delay(waitTime);
         }*/
-        delay(150);
         stopFeedback();
         registrationDone = true;
       }
@@ -269,7 +270,6 @@ void loop() {
     NewCard c(epochTime, cardID);
     startFeedback();
     c.PushToFirebase(&firebaseData);
-    delay(150);
     stopFeedback();
     Serial.println("Pushed new card ID to newCards");
   }
@@ -291,6 +291,7 @@ void startFeedback() {
 void stopFeedback() {
   ledcWrite(buzzerChannel, 0);
   ledcWriteTone(buzzerChannel, 0);
+  delay(50);
   rgbLED(0, 0, 255);
 }
 
