@@ -1,48 +1,25 @@
 import React, {useState, useEffect} from "react";
-// react plugin for creating charts
-import ChartistGraph from "react-chartist";
 // @material-ui/core
 import { makeStyles } from "@material-ui/core/styles";
-import Icon from "@material-ui/core/Icon";
-// @material-ui/icons
-import Store from "@material-ui/icons/Store";
-import Warning from "@material-ui/icons/Warning";
-import DateRange from "@material-ui/icons/DateRange";
-import LocalOffer from "@material-ui/icons/LocalOffer";
-import Update from "@material-ui/icons/Update";
-import ArrowUpward from "@material-ui/icons/ArrowUpward";
-import AccessTime from "@material-ui/icons/AccessTime";
-import Accessibility from "@material-ui/icons/Accessibility";
-import BugReport from "@material-ui/icons/BugReport";
-import Code from "@material-ui/icons/Code";
-import Cloud from "@material-ui/icons/Cloud";
 // core components
 import GridItem from "components/Grid/GridItem.js";
 import GridContainer from "components/Grid/GridContainer.js";
 import Table from "components/Table/Table.js";
-import Tasks from "components/Tasks/Tasks.js";
-import CustomTabs from "components/CustomTabs/CustomTabs.js";
-import Danger from "components/Typography/Danger.js";
 import Card from "components/Card/Card.js";
 import CardHeader from "components/Card/CardHeader.js";
-import CardIcon from "components/Card/CardIcon.js";
 import CardBody from "components/Card/CardBody.js";
-import CardFooter from "components/Card/CardFooter.js";
-
 import Button from "components/CustomButtons/Button.js";
 import CustomInput from "components/CustomInput/CustomInput.js";
 
-import { bugs, website, server } from "variables/general.js";
 import {withFirebase} from '../../components/Firebase';
-import {formatDate} from '../../util'
-
-import {
-  dailySalesChart,
-  emailsSubscriptionChart,
-  completedTasksChart
-} from "variables/charts.js";
+import {formatDate, dateFromTimestamp} from '../../util'
 
 import styles from "assets/jss/material-dashboard-react/views/dashboardStyle.js";
+
+/* 
+Very useful article:
+* https://www.robinwieruch.de/complete-firebase-authentication-react-tutorial#manage-users-with-firebases-realtime-database-in-react
+*/
 
 const useStyles = makeStyles(styles);
 
@@ -72,9 +49,12 @@ export default withFirebase((props) => {
 
   useEffect(() => {
     firebase.db.ref('newCards').on('value', (snapshot) => {
-      const newUsers = snapshot.val()
-      const mappedCards = newUsers.map((val) => {
-        return [formatDate(new Date(val.timestamp)), val.identifier];
+      if (!snapshot.val()) {
+        setNewCards([])
+        return
+      }
+      const mappedCards = Object.values(snapshot.val()).map((val) => {
+        return [formatDate(dateFromTimestamp(val.timestamp)), val.identifier];
       })
       console.log(mappedCards)
 
@@ -105,9 +85,124 @@ export default withFirebase((props) => {
     setUsers(users)
   }
 
+  const onNewCardClick = (key) => {
+    console.log("onNewCardClick", key)
+    firebase.db.ref('newCards').once('value').then((snapshot) => {
+      var removeKey = ""
+      Object.entries(snapshot.val()).forEach(([id,value]) => {
+        if (value.identifier === newCards[key][1]) {
+          removeKey = id
+        }
+      })
+      firebase.db.ref(`newCards/${removeKey}`).remove()
+    })
+  }
+  const onUserClick = (key) => {
+    console.log("onUserClick", key)
+    const userID = users[key][0]
+    var identifiers = users[key][2].split(" ")
+    if (identifiers[0] === "") {
+      identifiers = []
+    }
+    identifiers.push(newCards[0][1])
+    firebase.db.ref(`users/${userID}/identifiers`).set(identifiers)
+
+    // remove the top new card
+    onNewCardClick(0)
+  }
+
   return (
     <div>
     <GridContainer>
+      <GridItem xs={12} sm={12} md={6}>
+        <Card>
+          <CardHeader color="warning">
+            <h4 className={classes.cardTitleWhite}>Students</h4>
+            <p className={classes.cardCategoryWhite}>
+              Known Students and their identifiers
+            </p>
+          </CardHeader>
+          <CardBody>
+            <Table
+              tableHeaderColor="warning"
+              tableHead={["ID", "Name", "Identifiers"]}
+              tableData={users}
+              onRowClick={(key) => onUserClick(key)}
+            />
+            <GridContainer alignItems="flex-end">
+              <GridItem xs={2}>
+                <CustomInput
+                  labelText="User ID"
+                  id="userID"
+                  formControlProps={{
+                    fullWidth: true
+                  }}
+                  inputProps={{
+                    onChange: (ev) => setNewUserID(ev.target.value),
+                    value: newUserID
+                  }}
+                />
+              </GridItem>
+              <GridItem xs={3}>
+                <CustomInput
+                  labelText="First Name"
+                  id="firstName"
+                  formControlProps={{
+                    fullWidth: true
+                  }}
+                  inputProps={{
+                    onChange: (ev) => setNewUserFirst(ev.target.value),
+                    value: newUserFirst
+                  }}
+                />
+              </GridItem>
+              <GridItem xs={3}>
+                <CustomInput
+                  labelText="Last Name"
+                  id="lastName"
+                  formControlProps={{
+                    fullWidth: true
+                  }}
+                  inputProps={{
+                    onChange: (ev) => setNewUserLast(ev.target.value),
+                    value: newUserLast
+                  }}
+                />
+              </GridItem>
+              <GridItem xs={4}>
+                <Button color="primary" onClick={() => addUser()}>
+                  Add New User
+                </Button>
+              </GridItem>
+            </GridContainer>
+          </CardBody>
+        </Card>
+      </GridItem>
+      <GridItem xs={12} sm={12} md={6}>
+        <Card>
+          <CardHeader color="warning">
+            <h4 className={classes.cardTitleWhite}>Newly Registered Cards</h4>
+            <p className={classes.cardCategoryWhite}>
+              Known Students and their identifiers
+            </p>
+          </CardHeader>
+          <CardBody>
+            <Table
+              tableHeaderColor="warning"
+              tableHead={["Time", "Identifier"]}
+              tableData={newCards}
+              onRowClick={(key) => onNewCardClick(key)}
+            />
+          </CardBody>
+        </Card>
+      </GridItem>
+    </GridContainer>
+  </div>
+  );
+})
+
+/*
+<GridContainer>
       <GridItem xs={12} sm={6} md={3}>
         <Card>
           <CardHeader color="warning" stats icon>
@@ -183,93 +278,6 @@ export default withFirebase((props) => {
         </Card>
       </GridItem>
     </GridContainer>
-    <GridContainer>
-      <GridItem xs={12} sm={12} md={6}>
-        <Card>
-          <CardHeader color="warning">
-            <h4 className={classes.cardTitleWhite}>Students</h4>
-            <p className={classes.cardCategoryWhite}>
-              Known Students and their identifiers
-            </p>
-          </CardHeader>
-          <CardBody>
-            <Table
-              tableHeaderColor="warning"
-              tableHead={["ID", "Name", "Identifiers"]}
-              tableData={users}
-            />
-            <GridContainer alignItems="flex-end">
-              <GridItem xs={2}>
-                <CustomInput
-                  labelText="User ID"
-                  id="userID"
-                  formControlProps={{
-                    fullWidth: true
-                  }}
-                  inputProps={{
-                    onChange: (ev) => setNewUserID(ev.target.value),
-                    value: newUserID
-                  }}
-                />
-              </GridItem>
-              <GridItem xs={3}>
-                <CustomInput
-                  labelText="First Name"
-                  id="firstName"
-                  formControlProps={{
-                    fullWidth: true
-                  }}
-                  inputProps={{
-                    onChange: (ev) => setNewUserFirst(ev.target.value),
-                    value: newUserFirst
-                  }}
-                />
-              </GridItem>
-              <GridItem xs={3}>
-                <CustomInput
-                  labelText="Last Name"
-                  id="lastName"
-                  formControlProps={{
-                    fullWidth: true
-                  }}
-                  inputProps={{
-                    onChange: (ev) => setNewUserLast(ev.target.value),
-                    value: newUserLast
-                  }}
-                />
-              </GridItem>
-              <GridItem xs={4}>
-                <Button color="primary" onClick={() => addUser()}>
-                  Add New User
-                </Button>
-              </GridItem>
-            </GridContainer>
-          </CardBody>
-        </Card>
-      </GridItem>
-      <GridItem xs={12} sm={12} md={6}>
-        <Card>
-          <CardHeader color="warning">
-            <h4 className={classes.cardTitleWhite}>Newly Registered Cards</h4>
-            <p className={classes.cardCategoryWhite}>
-              Known Students and their identifiers
-            </p>
-          </CardHeader>
-          <CardBody>
-            <Table
-              tableHeaderColor="warning"
-              tableHead={["Time", "Identifier"]}
-              tableData={newCards}
-            />
-          </CardBody>
-        </Card>
-      </GridItem>
-    </GridContainer>
-  </div>
-  );
-})
-
-/*
 <GridContainer>
       <GridItem xs={12} sm={12} md={4}>
         <Card chart>

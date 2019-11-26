@@ -4,19 +4,14 @@ import { makeStyles } from "@material-ui/core/styles";
 // core components
 import GridItem from "components/Grid/GridItem.js";
 import GridContainer from "components/Grid/GridContainer.js";
-import Table from "components/Table/Table.js";
 import Card from "components/Card/Card.js";
 import CardHeader from "components/Card/CardHeader.js";
 import CardBody from "components/Card/CardBody.js";
 import Tasks from "components/Tasks/Tasks.js";
-import CardFooter from "components/Card/CardFooter.js";
-import UpdateIcon from "@material-ui/icons/Update";
-import CardIcon from "components/Card/CardIcon.js";
-import Accessibility from "@material-ui/icons/Accessibility";
+
 import importedstyles from "assets/jss/material-dashboard-react/views/dashboardStyle.js";
 
 import {withFirebase} from '../../components/Firebase';
-import { formatYYYYDDMM, dateFromTimestamp } from "../../util";
 
 const styles = Object.assign(importedstyles, {
   cardCategoryWhite: {
@@ -71,12 +66,8 @@ export default withFirebase((props) => {
         console.log("registrations", registrations)
         // https://stackoverflow.com/questions/24806772/how-to-skip-over-an-element-in-map
         const checkedIndexes = registrations.reduce(function(result, registration) {
-          //var datestr = formatYYYYDDMM(dateFromTimestamp(registration.timestamp))
-          //console.log(datestr)
+          // Add those user IDs to the result that have a registration for that day
           if (registration.dateString === lessonDate) {
-            //const user = users.find((user) => {
-            //  return user.userID === registration.userID.toString()
-            //})
             console.log("found user index", users, registration.userID)
             result.push(registration.userID)
           }
@@ -114,24 +105,24 @@ export default withFirebase((props) => {
   return (
     <div>
       <GridContainer>
-    <GridItem xs={12} sm={12} md={12}>
-      <Card>
-        <CardHeader color="primary">
-          <h4 className={classes.cardTitleWhite}>Lesson {lessonDate}</h4>
-          <p className={classes.cardCategoryWhite}>
-            Lesson description
-          </p>
-        </CardHeader>
-        <CardBody>
-        <Tasks
-          checkedIndexes={checkedIndexes}
-          tasksIndexes={taskIndexes}
-          tasks={users}
-          onCheckedChanged={(index, value) => onCheckedChanged(index, value)} />
-        </CardBody>
-      </Card>
-    </GridItem>
-  </GridContainer>
+        <GridItem xs={12} sm={12} md={12}>
+          <Card>
+            <CardHeader color="primary">
+              <h4 className={classes.cardTitleWhite}>Lesson {lessonDate}</h4>
+              <p className={classes.cardCategoryWhite}>
+                On this page, you can see what students were present
+              </p>
+            </CardHeader>
+            <CardBody>
+            <Tasks
+              checkedIndexes={checkedIndexes}
+              tasksIndexes={taskIndexes}
+              tasks={users}
+              onCheckedChanged={(index, value) => onCheckedChanged(index, value)} />
+            </CardBody>
+          </Card>
+        </GridItem>
+      </GridContainer>
     </div>
   );
 })
