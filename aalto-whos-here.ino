@@ -229,7 +229,7 @@ void loop() {
     auto t = registrations[cardID];
     auto delta = timeClient.getEpochTime() - t;
     if (delta < registrationPeriod) {
-      Serial.print("Waiting some time, because an earlier presentation already found. Delta: ");
+      Serial.print("Waiting some time, because an earlier registration already found. Delta: ");
       Serial.println(delta);
       return;
     }
@@ -237,6 +237,7 @@ void loop() {
   }
   auto epochTime = timeClient.getEpochTime();
   registrations[cardID] = epochTime;
+  bool registrationDone = false;
   for (auto user : users) {
     for (auto id : user.identifiers) {
       if (cardID == id) {
@@ -244,21 +245,10 @@ void loop() {
         ss << "Hello " << user.firstName << " " << user.lastName << ", you're registered!";
         Serial.println(ss.str().c_str());
 
-        // Set the LED to green for a while
-        rgbLED(0, 255, 0);
-        // Play buzzer sound
-        ledcWrite(buzzerChannel, 255);
-        ledcWriteTone(buzzerChannel, 1500);
-        // TODO: Display the welcome message on the LCD screen
-
         Registration r(user.userID, epochTime, UUID);
-        auto json = r.ToJSON();
-        if (Firebase.pushJSON(firebaseData, "/registrations", *json)) {
-          Serial.println(firebaseData.dataPath());
-          Serial.println(firebaseData.pushName());
-        } else {
-          Serial.println(firebaseData.errorReason());
-        }
+        startFeedback();
+
+        r.PushToFirebase(&firebaseData);        
         // Wait 0.5s and then go back to blue
         /*unsigned long now = millis();
         unsigned long waitTime = buzzTime - max<unsigned long>(now - before, buzzTime);
@@ -269,17 +259,39 @@ void loop() {
           Serial.println("Sleeping a bit");
           delay(waitTime);
         }*/
-        delay(250);
-        ledcWrite(buzzerChannel, 0);
-        ledcWriteTone(buzzerChannel, 0);
-        rgbLED(0, 0, 255);
+        delay(150);
+        stopFeedback();
+        registrationDone = true;
       }
     }
+  }
+  if (!registrationDone) {
+    NewCard c(epochTime, cardID);
+    startFeedback();
+    c.PushToFirebase(&firebaseData);
+    delay(150);
+    stopFeedback();
+    Serial.println("Pushed new card ID to newCards");
   }
   Serial.println("Loop done.");
   Serial.flush();
   // Need to reset the timer here so that it successfully starts the next round
   nextLoopTime = 0;
+}
+
+void startFeedback() {
+  // Set the LED to green for a while
+  rgbLED(0, 255, 0);
+  // Play buzzer sound
+  ledcWrite(buzzerChannel, 255);
+  ledcWriteTone(buzzerChannel, 1500);
+  // TODO: Display the welcome message on the LCD screen
+}
+
+void stopFeedback() {
+  ledcWrite(buzzerChannel, 0);
+  ledcWriteTone(buzzerChannel, 0);
+  rgbLED(0, 0, 255);
 }
 
 std::string getCardID(uint8_t uid[], uint8_t uidLength) {
@@ -313,9 +325,14 @@ void usersCallback(StreamData data) {
   Serial.println(data.dataType());
   Serial.println(data.jsonData());
 
+  if (data.dataPath() != "/") {
+    Serial.println("This event isn't targeted for /users, skipping...");
+    return;
+  }
+
   // TODO: Dynamically set this, based on the byte size of the response
   // TODO: Figure out if the Firebase library has some kind of pagination setup
-  DynamicJsonDocument doc(500);
+  DynamicJsonDocument doc(data.jsonData().length() * 3);
   DeserializationError error = deserializeJson(doc, data.jsonData());
   if (error) {
     Serial.print("deserializeJson() failed: "); Serial.println(error.c_str());

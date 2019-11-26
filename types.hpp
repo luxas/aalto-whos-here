@@ -1,7 +1,15 @@
 #include <string>
 #include <vector>
+#include <sstream>
 #include <ArduinoJson.h>
 #include <FirebaseESP32.h>
+
+std::string formatTimestamp(int timestamp) {
+  time_t secondsSinceEpoch = timestamp;
+  char str[10];
+  strftime(str, sizeof str, "%Y%m%d", gmtime(&secondsSinceEpoch));
+  return std::string(str);
+}
 
 class User {
 public:
@@ -42,18 +50,46 @@ public:
   Registration() {};
   Registration(int uid, int t, std::string dev) : userID(uid), timestamp(t), device(dev) {};
 
-  // TODO: Make this more ideomatic...
-  FirebaseJson* ToJSON() {
-    json = new FirebaseJson();
-    json->addInt("timestamp", timestamp);
-    json->addInt("userID", userID);
-    json->addString("device", device.c_str());
-    return json;
+  bool PushToFirebase(FirebaseData* firebaseData) {
+    // Note: ignoring device for now
+    std::stringstream ss;
+    ss << "/registrations/" << userID << "-" << formatTimestamp(timestamp) << "/timestamp";
+    Serial.print("Pushing JSON to path: "); Serial.println(ss.str().c_str());
+
+    if (Firebase.setInt(*firebaseData, ss.str().c_str(), timestamp)) {
+      Serial.println(firebaseData->dataPath());
+      Serial.println(firebaseData->pushName());
+      return true;
+    } else {
+      Serial.println(firebaseData->errorReason());
+      return false;
+    }
   }
 
   int userID;
   int timestamp;
   std::string device;
-private:
-  FirebaseJson* json;
+};
+
+class NewCard {
+public:
+  NewCard() {};
+  NewCard(int ts, const std::string& cardID) : timestamp(ts), identifier(cardID) {}
+
+  bool PushToFirebase(FirebaseData* firebaseData) {
+    auto json = new FirebaseJson();
+    json->addInt("timestamp", timestamp);
+    json->addString("identifier", identifier.c_str());
+    if (Firebase.pushJSON(*firebaseData, "/newCards", *json)) {
+      Serial.println(firebaseData->dataPath());
+      Serial.println(firebaseData->pushName());
+      return true;
+    } else {
+      Serial.println(firebaseData->errorReason());
+      return false;
+    }
+  }
+
+  int timestamp;
+  std::string identifier;
 };
