@@ -21,7 +21,7 @@
 // Connect to Firebase through WiFi
 #include <WiFi.h>
 // Install this as Firebase ESP32 Client by Mobitz, version 3.2.1
-// This also depends on curl -sSL https://github.com/mobizt/HTTPClientESP32Ex/archive/1.1.3.tar.gz | tar -xz -C ~/Arduino/libraries/
+// This also depends on curl -sSL https://github.com/mobizt/HTTPClientESP32Ex/archive/1.2.0.tar.gz | tar -xz -C ~/Arduino/libraries/
 #include <FirebaseESP32.h>
 
 // Connect to the NFC reader through SPI
@@ -32,8 +32,6 @@
 #include <PN532_SPI.h>
 #include <PN532.h>
 
-// Support reading/parsing JSON. Eventually get rid of this; use FirebaseJSON instead.
-#include <ArduinoJson.h>
 // Get the current time using some NTP servers
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -52,12 +50,9 @@ There is intentionally a whitespace between # and define, there shouldn't be one
 #include "types.hpp"
 
 #include <iomanip>
-#include <string>
 #include <sstream>
 #include <map>
 
-// TODO: Get this based on some value, e.g. CPU number
-const std::string UUID ="foobar";
 // only allow one card registration per hour (currently hardcoded to a minute for testing)
 const unsigned long registrationPeriod = 1 * 60; //  * 60;
 
@@ -73,10 +68,10 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
 
 std::vector<User> users;
-Device currentDevice;
+//Device currentDevice;
 bool usersInitialized = false;
 
-std::map<std::string, unsigned long> registrations;
+std::map<String, unsigned long> registrations;
 
 unsigned long nextLoopTime = 0;
 
@@ -126,10 +121,13 @@ void setup() {
 
   timeClient.begin();
 
-  streamFirebaseData(firebaseData, "/users", usersCallback);
-  /*std::string deviceStr = "/devices/";
-  deviceStr += UUID;
-  streamFirebaseData(firebaseData, deviceStr.c_str(), deviceCallback);*/
+  // Get initial user data from the database
+  if(Firebase.getJSON(firebaseData, "/users")) {
+    Serial.println("Successfully got user data.");
+    handleUsers(firebaseData);
+  } else {
+    Serial.println("Handle users failed.");
+  }
 }
 
 void rgbLED(int red, int green, int blue) {
@@ -176,22 +174,20 @@ void connectToWiFi(char ssid[], char password[]) {
 
 void initFirebase(FirebaseData& db, String host, String secret) {
   // put your setup code here, to run once:
-  //4. Setup Firebase credential in setup()
+  // 4. Setup Firebase credential in setup()
   Firebase.begin(host, secret);
 
-  //5. Optional, set AP reconnection in setup()
+  // 5. Optional, set AP reconnection in setup()
   Firebase.reconnectWiFi(true);
 
-  //6. Optional, set number of auto retry when read/store data
-  Firebase.setMaxRetry(db, 3);
+  // 6. Optional, set number of auto retry when read/store data
+  Firebase.setMaxRetry(db, 10);
 
-  //7. Optional, set number of read/store data error can be added to queue collection
+  // 7. Optional, set number of read/store data error can be added to queue collection
   Firebase.setMaxErrorQueue(db, 30);
 }
 
 void loop() {
-  stopFeedback();
-  
   // Wait until we've passed the nextLoopTime time mark.
   if (nextLoopTime < millis() && nextLoopTime != 0) {
     return;
@@ -206,6 +202,9 @@ void loop() {
     nextLoopTime = millis() + 2000;
     return;
   }
+
+  // Need to reset the timer here so that it successfully starts the next round
+  nextLoopTime = 0;
   
   uint8_t success;                          // Flag to check if there was an error with the PN532
   uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
@@ -247,20 +246,12 @@ void loop() {
         ss << "Hello " << user.firstName << " " << user.lastName << ", you're registered!";
         Serial.println(ss.str().c_str());
 
-        Registration r(user.userID, epochTime, UUID);
+        Registration r(user.userID, epochTime);
+        // Start the beep feedback
         startFeedback();
-
-        r.PushToFirebase(&firebaseData);        
-        // Wait 0.5s and then go back to blue
-        /*unsigned long now = millis();
-        unsigned long waitTime = buzzTime - max<unsigned long>(now - before, buzzTime);
-        Serial.println(buzzTime);
-        Serial.println(now - before);
-        Serial.println(waitTime);
-        if (waitTime > 0) {
-          Serial.println("Sleeping a bit");
-          delay(waitTime);
-        }*/
+        // Push the data to the database
+        r.PushToFirebase(&firebaseData);
+        // Stop the beep feedback
         stopFeedback();
         registrationDone = true;
       }
@@ -275,8 +266,6 @@ void loop() {
   }
   Serial.println("Loop done.");
   Serial.flush();
-  // Need to reset the timer here so that it successfully starts the next round
-  nextLoopTime = 0;
 }
 
 void startFeedback() {
@@ -295,7 +284,7 @@ void stopFeedback() {
   rgbLED(0, 0, 255);
 }
 
-std::string getCardID(uint8_t uid[], uint8_t uidLength) {
+String getCardID(uint8_t uid[], uint8_t uidLength) {
   std::stringstream ss;
   for (uint8_t i = 0; i < uidLength; i++) {
     if (i > 0) {
@@ -305,36 +294,58 @@ std::string getCardID(uint8_t uid[], uint8_t uidLength) {
     sprintf(buf, "%02hhx", uid[i]);
     ss << buf;
   }
-  return ss.str();
+  return ss.str().c_str();
 }
 
-void streamFirebaseData(FirebaseData& db, String path, StreamEventCallback callback) {
-  Firebase.setStreamCallback(db, callback, streamTimeoutCallback);
-
-  //In setup(), set the streaming path and begin stream connection
-  // TODO: Make this faster, by calling callback manually the first time, when getting the data synchronously
-  if (!Firebase.beginStream(db, path))
-  {
-    //Could not begin stream connection, then print out the error detail
-    Serial.println(db.errorReason());
-  }
-}
-
-void usersCallback(StreamData data) {
+void handleUsers(FirebaseData& data) {
   Serial.println("User Data...");
-  Serial.println(data.dataPath());
-  Serial.println(data.dataType());
-  Serial.println(data.jsonData());
+  
+  users.clear();
 
-  if (data.dataPath() != "/") {
-    Serial.println("This event isn't targeted for /users, skipping...");
+  FirebaseJson* json = &data.jsonObject();
+  if (json == nullptr) {
+    Serial.println("json is nullptr!");
     return;
   }
+  String jsonStr = "";
+  json->toString(jsonStr);
+  Serial.println(jsonStr);
 
-  // TODO: Dynamically set this, based on the byte size of the response
-  // TODO: Figure out if the Firebase library has some kind of pagination setup
-  DynamicJsonDocument doc(data.jsonData().length() * 3);
-  DeserializationError error = deserializeJson(doc, data.jsonData());
+  size_t len = json->iteratorBegin();
+  String key, value = "";
+  String firstName, lastName = "";
+  int type = 0;
+  for (size_t i = 0; i < len; i++)
+  {
+    json->iteratorGet(i, type, key, value);
+    Serial.print("key is this for index "); Serial.println(i); Serial.println(key); Serial.println(value);
+    FirebaseJsonData tmpObj;
+    json->get(tmpObj, key + "/firstName");
+    firstName = tmpObj.stringValue;
+    Serial.println(firstName);
+    json->get(tmpObj, key + "/lastName");
+    lastName = tmpObj.stringValue;
+    Serial.println(lastName);
+    String fullName = firstName + " " + lastName;
+    json->get(tmpObj, key + "/identifiers");
+    FirebaseJsonArray arr;
+    tmpObj.getArray(arr);
+    std::vector<String> identifiers;
+    for (size_t j = 0; j < arr.size(); j++) {
+      arr.get(tmpObj, j);
+      identifiers.push_back(tmpObj.stringValue);
+      Serial.println(tmpObj.stringValue);
+    }
+    User u(atoi(key.c_str()), firstName, lastName, identifiers);
+    users.push_back(u);
+    Serial.println("next user.");
+  }
+  //Clear all list to free memory
+  json->iteratorEnd();
+
+  // Similar setup with ArduinoJson, which we didn't use in the end.
+  /*DynamicJsonDocument doc(jsonStr.length() * 3);
+  DeserializationError error = deserializeJson(doc, jsonStr);
   if (error) {
     Serial.print("deserializeJson() failed: "); Serial.println(error.c_str());
     return;
@@ -348,36 +359,8 @@ void usersCallback(StreamData data) {
     users.push_back(u);
 
     Serial.println(u.userID);
-  }
+  }*/
   usersInitialized = true;
   rgbLED(0, 0, 255);
   Serial.print("Users length: "); Serial.println(users.size());
-}
-
-void deviceCallback(StreamData data) {
-  Serial.println("Device Data...");
-  Serial.println(data.dataPath());
-  Serial.println(data.dataType());
-  Serial.println(data.jsonData());
-
-  DynamicJsonDocument doc(100);
-  DeserializationError error = deserializeJson(doc, data.jsonData());
-  if (error) {
-    Serial.print("deserializeJson() failed: "); Serial.println(error.c_str());
-    return;
-  }
-  JsonObject deviceObj = doc.as<JsonObject>();
-  const char* str = deviceObj["location"];
-  Serial.println(str);
-  currentDevice.location = std::string(str);
-  currentDevice.uuid = UUID;
-}
-
-//Global function that notify when stream connection lost
-//The library will resume the stream connection automatically
-void streamTimeoutCallback(bool timeout) {
-  if (timeout) {
-    //Stream timeout occurred
-    Serial.println("Stream timeout, resume streaming...");
-  }
 }

@@ -1,7 +1,5 @@
-#include <string>
 #include <vector>
 #include <sstream>
-#include <ArduinoJson.h>
 #include <FirebaseESP32.h>
 
 std::string formatTimestamp(int timestamp) {
@@ -14,8 +12,8 @@ std::string formatTimestamp(int timestamp) {
 class User {
 public:
   User() {};
-  // TODO: Use FirebaseJSON consistently here for parsing the data, instead of this extra library
-  User(int uid, const JsonObject& obj) {
+  // Old ArduinoJson implementation
+  /*User(int uid, const JsonObject& obj) {
       userID = uid;
       const char* str = obj["firstName"];
       firstName = std::string(str);
@@ -29,38 +27,39 @@ public:
         str = value.as<char*>();
         identifiers.push_back(std::string(str));
       }
-  };
+  };*/
+  User(int uid, String fName, String lName, std::vector<String> ids) {
+    userID = uid;
+    firstName = fName;
+    lastName = lName;
+    identifiers = ids;
+  }
 
-  std::string firstName;
-  std::string lastName;
-  std::vector<std::string> identifiers;  
+  String firstName;
+  String lastName;
+  std::vector<String> identifiers;  
   int userID;
-};
-
-class Device {
-public:
-  Device() {};
-
-  std::string uuid;
-  std::string location;
 };
 
 class Registration {
 public:
   Registration() {};
-  Registration(int uid, int t, std::string dev) : userID(uid), timestamp(t), device(dev) {};
+  Registration(int uid, int t) : userID(uid), timestamp(t) {};
 
   bool PushToFirebase(FirebaseData* firebaseData) {
     // Note: ignoring device for now
     std::stringstream ss;
     ss << "/registrations/" << userID << "-" << formatTimestamp(timestamp) << "/timestamp";
     Serial.print("Pushing JSON to path: "); Serial.println(ss.str().c_str());
+    Serial.println(timestamp);
 
     if (Firebase.setInt(*firebaseData, ss.str().c_str(), timestamp)) {
+      Serial.println("waiting done, success");
       Serial.println(firebaseData->dataPath());
       Serial.println(firebaseData->pushName());
       return true;
     } else {
+      Serial.println("waiting done, fail");
       Serial.println(firebaseData->errorReason());
       return false;
     }
@@ -68,28 +67,30 @@ public:
 
   int userID;
   int timestamp;
-  std::string device;
 };
 
 class NewCard {
 public:
   NewCard() {};
-  NewCard(int ts, const std::string& cardID) : timestamp(ts), identifier(cardID) {}
-
+  NewCard(int ts, String cardID) : timestamp(ts), identifier(cardID) {}
   bool PushToFirebase(FirebaseData* firebaseData) {
-    auto json = new FirebaseJson();
-    json->addInt("timestamp", timestamp);
-    json->addString("identifier", identifier.c_str());
-    if (Firebase.pushJSON(*firebaseData, "/newCards", *json)) {
+    FirebaseJson json;
+    json.set("timestamp", timestamp);
+    json.set("identifier", identifier.c_str());
+
+    Serial.print("Pushing JSON to path /newCards: "); Serial.print(timestamp); Serial.println(identifier.c_str());
+    if (Firebase.pushJSON(*firebaseData, "/newCards", json)) {
+      Serial.println("waiting done, success");
       Serial.println(firebaseData->dataPath());
       Serial.println(firebaseData->pushName());
       return true;
     } else {
+      Serial.println("waiting done, failed");
       Serial.println(firebaseData->errorReason());
       return false;
     }
   }
 
   int timestamp;
-  std::string identifier;
+  String identifier;
 };
